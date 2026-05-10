@@ -1,36 +1,24 @@
 const express = require('express');
 const pool = require('../db');
-const { authRequired } = require('../middleware/auth');
 const router = express.Router();
 
 router.get('/', async (req, res) => {
-  const { category, type, search, max_price } = req.query;
-  const params = [];
-  const where = [`status='active'`];
-  if (category) { params.push(category); where.push(`category=$${params.length}`); }
-  if (type) { params.push(type); where.push(`type=$${params.length}`); }
-  if (search) { params.push(`%${search}%`); where.push(`(name ILIKE $${params.length} OR short_description ILIKE $${params.length})`); }
-  if (max_price) { params.push(Number(max_price) * 100); where.push(`price_cents <= $${params.length}`); }
-  const result = await pool.query(`SELECT * FROM products WHERE ${where.join(' AND ')} ORDER BY created_at DESC`, params);
+  const { category, type, q, status = 'active' } = req.query;
+  const vals = [];
+  const where = [];
+  if (status !== 'all') { vals.push(status); where.push(`status=$${vals.length}`); }
+  if (category) { vals.push(category); where.push(`LOWER(category)=LOWER($${vals.length})`); }
+  if (type) { vals.push(type); where.push(`LOWER(type)=LOWER($${vals.length})`); }
+  if (q) { vals.push(`%${q}%`); where.push(`(name ILIKE $${vals.length} OR short_description ILIKE $${vals.length} OR description ILIKE $${vals.length})`); }
+  const sql = `SELECT * FROM products ${where.length ? 'WHERE '+where.join(' AND ') : ''} ORDER BY created_at DESC`;
+  const result = await pool.query(sql, vals);
   res.json({ products: result.rows });
 });
 
-router.get('/:slug', async (req, res) => {
-  const result = await pool.query('SELECT * FROM products WHERE slug=$1 OR id=$1 LIMIT 1', [req.params.slug]);
-  const product = result.rows[0];
-  if (!product) return res.status(404).json({ error: 'Product not found' });
-  res.json({ product });
+router.get('/:id', async (req, res) => {
+  const r = await pool.query('SELECT * FROM products WHERE id=$1 OR slug=$1 LIMIT 1', [req.params.id]);
+  if (!r.rows[0]) return res.status(404).json({ error: 'Product not found' });
+  const d = await pool.query('SELECT id, version, file_name, changelog, is_latest, created_at FROM downloads WHERE product_id=$1 ORDER BY created_at DESC', [r.rows[0].id]);
+  res.json({ product: r.rows[0], downloads: d.rows });
 });
-
-router.get('/:id/downloads', authRequired, async (req, res) => {
-  const result = await pool.query(
-    `SELECT d.* FROM downloads d
-     JOIN licenses l ON l.product_id=d.product_id
-     WHERE d.product_id=$1 AND l.user_id=$2 AND l.status='active'
-     ORDER BY d.created_at DESC`,
-    [req.params.id, req.user.id]
-  );
-  res.json({ downloads: result.rows });
-});
-
 module.exports = router;
