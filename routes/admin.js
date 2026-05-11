@@ -74,6 +74,9 @@ router.post("/products", async (req, res) => {
     res.json(result.rows[0]);
   } catch (err) {
     console.error(err);
+    if (err.code === "23505" && err.constraint === "products_slug_key") {
+      return res.status(409).json({ error: "A product with this slug already exists" });
+    }
     res.status(500).json({ error: "Failed to create product" });
   }
 });

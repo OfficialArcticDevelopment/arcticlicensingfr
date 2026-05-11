@@ -1,4 +1,5 @@
 const express = require("express");
+const { Readable } = require("stream");
 const pool = require("../db");
 const { auth } = require("../middleware/auth");
 const router = express.Router();
@@ -71,18 +72,89 @@ router.get("/activations", async (req, res) => {
 router.get("/downloads", async (req, res) => {
   try {
     const result = await pool.query(
-      `SELECT DISTINCT d.*, p.name AS product_name
+      `SELECT DISTINCT
+          d.id,
+          d.product_id,
+          d.title,
+          d.version,
+          d.status,
+          d.created_at,
+          p.name AS product_name
        FROM downloads d
        JOIN products p ON p.id = d.product_id
        JOIN licenses l ON l.product_id = d.product_id
-       WHERE l.user_id = $1 AND l.status = 'active' AND d.status = 'active'
+       WHERE l.user_id = $1
+         AND l.status = 'active'
+         AND d.status = 'active'
+         AND p.status = 'active'
        ORDER BY d.created_at DESC`,
       [req.user.id]
     );
+
+    // Important: file_url is intentionally not returned to customers.
+    // Downloads must go through /api/customer/downloads/:id/download.
     res.json(result.rows);
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to load downloads" });
+  }
+});
+
+router.get("/downloads/:id/download", async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT DISTINCT
+          d.*,
+          p.name AS product_name
+       FROM downloads d
+       JOIN products p ON p.id = d.product_id
+       JOIN licenses l ON l.product_id = d.product_id
+       WHERE d.id = $1
+         AND l.user_id = $2
+         AND l.status = 'active'
+         AND d.status = 'active'
+         AND p.status = 'active'
+       LIMIT 1`,
+      [req.params.id, req.user.id]
+    );
+
+    if (!result.rows.length) {
+      return res.status(403).json({ error: "No valid license for this download" });
+    }
+
+    const download = result.rows[0];
+    const fileUrl = String(download.file_url || "").trim();
+
+    if (!/^https?:\/\//i.test(fileUrl)) {
+      console.error("Invalid download file_url", { download_id: download.id, file_url: fileUrl });
+      return res.status(500).json({ error: "Download file is not configured correctly" });
+    }
+
+    const upstream = await fetch(fileUrl, { redirect: "follow" });
+
+    if (!upstream.ok || !upstream.body) {
+      console.error("Download upstream failed", {
+        download_id: download.id,
+        status: upstream.status,
+        statusText: upstream.statusText
+      });
+      return res.status(502).json({ error: "Download source is unavailable" });
+    }
+
+    const safeName = `${download.product_name || "product"}-${download.version || "download"}`
+      .toLowerCase()
+      .replace(/[^a-z0-9._-]+/g, "-")
+      .replace(/^-+|-+$/g, "") || "download";
+
+    res.setHeader("Content-Type", upstream.headers.get("content-type") || "application/zip");
+    res.setHeader("Content-Disposition", `attachment; filename="${safeName}.zip"`);
+    res.setHeader("Cache-Control", "no-store, private");
+    res.setHeader("X-Content-Type-Options", "nosniff");
+
+    Readable.fromWeb(upstream.body).pipe(res);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to download file" });
   }
 });
 
