@@ -161,6 +161,7 @@ async function ensureSchema() {
   await addColumnIfMissing("downloads", "status TEXT DEFAULT 'active'");
   await addColumnIfMissing("downloads", "title TEXT DEFAULT 'Product Download'");
   await addColumnIfMissing("downloads", "file_url TEXT");
+  await addColumnIfMissing("downloads", "file_name TEXT");
 
   await ensureStatusConstraint("products", "products_status_check");
   await ensureStatusConstraint("downloads", "downloads_status_check");
