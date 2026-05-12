@@ -155,6 +155,9 @@ async function ensureSchema() {
     )
   `);
 
+  await addColumnIfMissing("admin_logs", "meta JSONB DEFAULT '{}'::jsonb");
+  await addColumnIfMissing("admin_logs", "created_at TIMESTAMPTZ DEFAULT NOW()");
+
   // Keep legacy downloads tables safe. Some existing Railway DBs were created
   // before downloads.status/file metadata existed, so add the required columns
   // before applying constraints or indexes.
