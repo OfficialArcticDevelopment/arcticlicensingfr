@@ -26,13 +26,60 @@ const ADMIN_PERMISSION_KEYS = [
   "logs.view"
 ];
 
+async function getColumnType(tableName, columnName) {
+  const result = await pool.query(
+    `SELECT data_type, udt_name
+     FROM information_schema.columns
+     WHERE table_schema = 'public'
+       AND table_name = $1
+       AND column_name = $2
+     LIMIT 1`,
+    [tableName, columnName]
+  );
+
+  return result.rows[0] || null;
+}
+
+function sqlTypeFromColumn(column) {
+  if (!column) return "UUID";
+  if (column.udt_name === "uuid") return "UUID";
+  if (["int2", "int4", "int8"].includes(column.udt_name)) return "INTEGER";
+  if (column.data_type && column.data_type.toLowerCase().includes("integer")) return "INTEGER";
+  return "UUID";
+}
+
+async function tableExists(tableName) {
+  const result = await pool.query(
+    `SELECT 1
+     FROM information_schema.tables
+     WHERE table_schema = 'public'
+       AND table_name = $1
+     LIMIT 1`,
+    [tableName]
+  );
+
+  return result.rows.length > 0;
+}
+
 async function ensureSchema() {
   await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS disabled BOOLEAN DEFAULT FALSE`);
+
+  const usersIdColumn = await getColumnType("users", "id");
+  const usersIdSqlType = sqlTypeFromColumn(usersIdColumn);
+  const usersIdUdt = usersIdColumn?.udt_name || "uuid";
+
+  const permissionsExists = await tableExists("admin_permissions");
+  if (permissionsExists) {
+    const existingPermissionUserId = await getColumnType("admin_permissions", "user_id");
+    if (!existingPermissionUserId || existingPermissionUserId.udt_name !== usersIdUdt) {
+      await pool.query(`DROP TABLE IF EXISTS admin_permissions CASCADE`);
+    }
+  }
 
   await pool.query(`
     CREATE TABLE IF NOT EXISTS admin_permissions (
       id SERIAL PRIMARY KEY,
-      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      user_id ${usersIdSqlType} NOT NULL REFERENCES users(id) ON DELETE CASCADE,
       permission TEXT NOT NULL,
       allowed BOOLEAN DEFAULT TRUE,
       created_at TIMESTAMPTZ DEFAULT NOW(),
@@ -40,10 +87,19 @@ async function ensureSchema() {
     )
   `);
 
+  const logsExists = await tableExists("admin_logs");
+  if (logsExists) {
+    const existingLogAdminId = await getColumnType("admin_logs", "admin_id");
+    if (existingLogAdminId && existingLogAdminId.udt_name !== usersIdUdt) {
+      await pool.query(`ALTER TABLE admin_logs DROP COLUMN IF EXISTS admin_id`);
+      await pool.query(`ALTER TABLE admin_logs ADD COLUMN admin_id ${usersIdSqlType} REFERENCES users(id) ON DELETE SET NULL`);
+    }
+  }
+
   await pool.query(`
     CREATE TABLE IF NOT EXISTS admin_logs (
       id SERIAL PRIMARY KEY,
-      admin_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      admin_id ${usersIdSqlType} REFERENCES users(id) ON DELETE SET NULL,
       action TEXT NOT NULL,
       meta JSONB DEFAULT '{}'::jsonb,
       created_at TIMESTAMPTZ DEFAULT NOW()
