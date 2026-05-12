@@ -89,11 +89,11 @@ router.get("/confirm-session/:sessionId", auth, async (req, res) => {
     const session = await stripe.checkout.sessions.retrieve(sessionId);
     const sessionUserId = String(session.metadata?.user_id || "").trim();
 
-    if (sessionUserId !== String(req.user.id)) {
+    if (sessionUserId && sessionUserId !== String(req.user.id)) {
       return res.status(403).json({ error: "This checkout session does not belong to your account" });
     }
 
-    const result = await fulfillCheckout(session);
+    const result = await fulfillCheckout(session, { stripe, fallbackUserId: req.user.id });
     res.json(result);
   } catch (err) {
     console.error("Checkout confirmation failed:", err);

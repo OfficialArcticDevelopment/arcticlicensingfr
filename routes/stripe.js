@@ -38,7 +38,7 @@ router.post("/webhook", async (req, res) => {
     console.log("Stripe webhook received:", event.type);
 
     if (event.type === "checkout.session.completed") {
-      const result = await fulfillCheckout(event.data.object);
+      const result = await fulfillCheckout(event.data.object, { stripe });
       console.log("Stripe checkout fulfilled:", event.data.object.id, result);
     }
 
