@@ -155,6 +155,13 @@ async function ensureSchema() {
     )
   `);
 
+  // Keep legacy downloads tables safe. Some existing Railway DBs were created
+  // before downloads.status/file metadata existed, so add the required columns
+  // before applying constraints or indexes.
+  await addColumnIfMissing("downloads", "status TEXT DEFAULT 'active'");
+  await addColumnIfMissing("downloads", "title TEXT DEFAULT 'Product Download'");
+  await addColumnIfMissing("downloads", "file_url TEXT");
+
   await ensureStatusConstraint("products", "products_status_check");
   await ensureStatusConstraint("downloads", "downloads_status_check");
   await ensureStatusConstraint("licenses", "licenses_status_check");
