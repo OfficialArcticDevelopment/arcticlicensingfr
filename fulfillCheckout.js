@@ -1,6 +1,12 @@
 const pool = require("./db");
 const { licenseKey } = require("./utils");
 
+function invoiceNumberFromSession(session) {
+  const raw = String(session?.payment_intent || session?.id || Date.now());
+  const clean = raw.replace(/[^a-zA-Z0-9]/g, "").toUpperCase();
+  return `INV-${clean.slice(-12)}`;
+}
+
 async function tableColumns(client, tableName) {
   const result = await client.query(
     `SELECT column_name FROM information_schema.columns WHERE table_schema='public' AND table_name=$1`,
@@ -80,6 +86,7 @@ async function fulfillCheckout(session, options = {}) {
       }
     };
 
+    addInvoice("invoice_number", invoiceNumberFromSession(session));
     addInvoice("user_id", userId);
     addInvoice("product_id", productId);
     addInvoice("amount_cents", amount);
