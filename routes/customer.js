@@ -3,8 +3,13 @@ const fs = require("fs");
 const path = require("path");
 const { Readable } = require("stream");
 const pool = require("../db");
-const { auth } = require("../middleware/auth");
+const authModule = require("../middleware/auth");
+const auth = typeof authModule === "function" ? authModule : authModule.auth;
 const router = express.Router();
+
+if (typeof auth !== "function") {
+  throw new TypeError("Customer route auth middleware failed to load");
+}
 
 router.use(auth);
 

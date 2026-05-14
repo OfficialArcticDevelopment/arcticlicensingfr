@@ -1,7 +1,8 @@
 const express = require("express");
 const Stripe = require("stripe");
 const pool = require("../db");
-const { auth } = require("../middleware/auth");
+const authModule = require("../middleware/auth");
+const auth = typeof authModule === "function" ? authModule : authModule.auth;
 const { publicUrl } = require("../utils");
 const { fulfillCheckout } = require("../fulfillCheckout");
 const router = express.Router();
