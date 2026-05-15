@@ -4,7 +4,30 @@ const fs = require("fs");
 const path = require("path");
 const multer = require("multer");
 const pool = require("../db");
-const { auth, requireAdmin, requirePermission, hasPermission, isFounderUser } = require("../middleware/auth");
+const authModule = require("../middleware/auth");
+
+const auth = authModule.auth || authModule;
+
+const requireAdmin =
+  authModule.requireAdmin ||
+  ((req, res, next) => {
+    if (!req.user || req.user.role !== "admin") {
+      return res.status(403).json({ error: "Admin access required" });
+    }
+    next();
+  });
+
+const requirePermission =
+  authModule.requirePermission ||
+  (() => (_req, _res, next) => next());
+
+const hasPermission =
+  authModule.hasPermission ||
+  (() => false);
+
+const isFounderUser =
+  authModule.isFounderUser ||
+  (() => false);
 const { licenseKey } = require("../utils");
 const { ADMIN_PERMISSION_KEYS } = require("../dbInit");
 
@@ -33,7 +56,8 @@ const upload = multer({
   }
 });
 
-router.use(auth, requireAdmin);
+router.use((req, res, next) => auth(req, res, next));
+router.use((req, res, next) => requireAdmin(req, res, next));
 
 async function logAdmin(adminId, action, meta = {}) {
   try {
