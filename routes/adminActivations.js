@@ -26,4 +26,22 @@ router.get("/", async (req, res) => {
   }
 });
 
+router.delete("/:id", async (req, res) => {
+  try {
+    await pool.query(
+      "DELETE FROM license_activations WHERE id = $1",
+      [req.params.id]
+    );
+
+    res.json({
+      success: true
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({
+      error: "Failed to revoke activation"
+    });
+  }
+});
+
 module.exports = router;
