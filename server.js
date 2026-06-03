@@ -26,18 +26,7 @@ app.use(helmet({
 }));
 
 app.use(cors({
-  origin(origin, callback) {
-    if (!origin) return callback(null, true);
-
-    const clean = normalizeOrigin(origin);
-
-    if (allowedOrigins.includes(clean)) {
-      return callback(null, true);
-    }
-
-    console.warn("CORS blocked origin:", origin);
-    return callback(new Error("CORS blocked"));
-  },
+  origin: true,
   credentials: true
 }));
 
