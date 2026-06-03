@@ -113,9 +113,14 @@ router.post("/license", async (req, res) => {
       domain
     });
   } catch (err) {
-    console.error("License verify error:", err);
-    return res.status(500).json({ valid: false, reason: "server_error" });
-  }
+  console.error("License verify error:", err);
+  return res.status(500).json({
+    valid: false,
+    reason: "server_error",
+    error: err.message,
+    code: err.code
+  });
+}
 });
 
 module.exports = router;
